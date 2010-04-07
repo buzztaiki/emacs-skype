@@ -234,29 +234,31 @@ BUILDER function."
     (ping . skype--com-py-ping)))
 (defvar skype--com-py-buffer-name "*skype--com-py*")
 (defvar skype--com-py-process nil)
-(defvar skype--com-py-program "python")
-(defvar skype--com-py-script (expand-file-name "skype-proxy.py" skype--libpath))
+(defvar skype--com-py-port 12222)
+(defvar skype--com-py-wait 0.00000000001)
 
 (defun skype--com-py-buffer ()
   (get-buffer-create skype--com-py-buffer-name))
 
 (defun skype--com-py-ping ()
-  (when (and (executable-find skype--com-py-program)
-	     (file-exists-p skype--com-py-script))
-    (when (and skype--com-py-process
-	       (eq (process-status skype--com-py-process) 'run))
-      (kill-buffer skype--com-py-buffer-name))
-    (with-current-buffer (skype--com-py-buffer)
-      (buffer-disable-undo)
-      (setq skype--com-py-process
-	    (start-process "skype--com-py" (current-buffer)
-			   skype--com-py-program
-			   skype--com-py-script))
-      (set-process-coding-system skype--com-py-process 'utf-8 'utf-8)
-      (and (accept-process-output skype--com-py-process 10)
-	   (string-match "^OK" (buffer-string))))))
+  (if (and skype--com-py-process
+	   (not (memq (process-status skype--com-py-process) '(exit closed))))
+      skype--com-py-process
+    (condition-case err
+	(setq skype--com-py-process
+	      (make-network-process
+	       :name "skype--com-py"
+	       :buffer (skype--com-py-buffer)
+	       :host "localhost"
+	       :service skype--com-py-port
+	       :coding '(utf-8 . utf-8)))
+      (error
+       (message "cannot connect %s" err)
+       nil))))
 
 (defun skype--com-py-call (message)
+  ;; ugry.. unless wait, connection is broken by 10053 on Windows...
+  (sit-for skype--com-py-wait)
   (catch 'return
     (with-current-buffer (skype--com-py-buffer)
       (erase-buffer)
